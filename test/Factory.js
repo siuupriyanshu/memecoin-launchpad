@@ -4,27 +4,40 @@ const { ethers } = require("hardhat")
 
 describe("Factory", function () {
     const FEE = ethers.parseUnits("0.01", 18);
-
+    
     async function deployFactoryFixtures() {
-        // Fetch Accounts
-        const [deployer, creator, buyer] = await ethers.getSigners();
+            // Fetch Accounts
+            const [deployer, creator, buyer] = await ethers.getSigners();
+    
+            // Fetch the contract
+            const Factory = await ethers.getContractFactory("Factory", deployer);
+    
+            // Deploy the contract
+            const factory = await Factory.deploy(FEE);
+    
+            // Create token
+            const transcation = await factory.connect(creator).create("Dapp Uni", "DAPP", { value: FEE })
+            await transcation.wait();
+    
+            // Get token address
+            const tokenAddress = await factory.tokens(0);
+            const token = await ethers.getContractAt("Token", tokenAddress)
+    
+            // Return values
+            return { factory, deployer, creator, token, buyer };
+        }
 
-        // Fetch the contract
-        const Factory = await ethers.getContractFactory("Factory", deployer);
+    async function buyTokenFixture() {
+        const { factory, token, creator, buyer } = await deployFactoryFixtures();
 
-        // Deploy the contract
-        const factory = await Factory.deploy(FEE);
+        const AMOUNT = ethers.parseUnits("10000", 18);
+        const COST = ethers.parseUnits("1", 18);
 
-        // Create token
-        const transcation = await factory.connect(creator).create("Dapp Uni", "DAPP", { value: FEE })
+        // buy tokens
+        const transcation = await factory.connect(buyer).buy(await token.getAddress(), AMOUNT, {value: COST});
         await transcation.wait();
 
-        // Get token address
-        const tokenAddress = await factory.tokens(0);
-        const token = await ethers.getContractAt("Token", tokenAddress)
-
-        // Return values
-        return { factory, deployer, creator, token, buyer };
+        return { factory, token, creator, buyer}
     }
 
     describe("Deployment", function () {
@@ -74,4 +87,45 @@ describe("Factory", function () {
             expect(sale.isOpen).to.equal(true)
           })
     })
+
+    describe("Buying", function () {
+        const AMOUNT = ethers.parseUnits("10000", 18)
+        const COST = ethers.parseUnits("1", 18)
+    
+        it("Should update ETH balance", async function () {
+          const { factory } = await loadFixture(buyTokenFixture)
+    
+          const balance = await ethers.provider.getBalance(await factory.getAddress())
+    
+          // Remember the fee to initially create the token + someone who bought
+          expect(balance).to.equal(FEE + COST)
+        })
+    
+        it("Should update token balances", async function () {
+          const { token, buyer } = await loadFixture(buyTokenFixture)
+    
+          const balance = await token.balanceOf(buyer.address)
+    
+          expect(balance).to.equal(AMOUNT)
+        })
+    
+        it("Should update token sale", async function () {
+          const { factory, token } = await loadFixture(buyTokenFixture)
+    
+          const sale = await factory.tokenToSale(await token.getAddress())
+    
+          expect(sale.sold).to.equal(AMOUNT)
+          expect(sale.raised).to.equal(COST)
+          expect(sale.isOpen).to.equal(true)
+        })
+    
+        it("Should increase base cost", async function () {
+          const { factory, token } = await loadFixture(buyTokenFixture)
+    
+          const sale = await factory.tokenToSale(await token.getAddress())
+          const cost = await factory.getCost(sale.sold)
+    
+          expect(cost).to.be.equal(ethers.parseUnits("0.0002"))
+        })
+      })
 });
