@@ -15,12 +15,27 @@ import config from "./config.json"
 import images from "./images.json"
 
 export default function Home() {
+  const [provider, setProvider] = useState(null);
+  const [account, setAccount] = useState(null);
+
+  async function connectHandler() {
+    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts'});
+    const account = ethers.getAddress(accounts[0])
+    setAccount(account);
+  }
+
+  const loadBlockChainData = async () => {
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        setProvider(provider);
+  }
+
+  useEffect(() => {
+    loadBlockChainData()
+  }, [])
 
   return (
     <div className="page">
-
-      <h1 style={{ padding: "1em" }}>fun.pump</h1>
-
+    <Header account={account} handleClick={connectHandler} />
     </div>
   );
 }
